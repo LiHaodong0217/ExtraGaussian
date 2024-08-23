@@ -22,7 +22,9 @@ from pathlib import Path
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
-
+from new_trajactory.add_noise import add_noise_to_extrinsics_and_intrinsics
+from new_trajactory.bezier_curve import generate_new_camera_poses
+import pdb
 class CameraInfo(NamedTuple):
     uid: int
     R: np.array
@@ -129,6 +131,86 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
+#vanilla
+# def readColmapSceneInfo(path, images, eval, llffhold=8):
+#     try:
+#         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
+#         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
+#         cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
+#         cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+#     except:
+#         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
+#         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
+#         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
+#         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
+
+
+#     # 创建路径
+#     original_output_dir = os.path.join(path, "camera_pose", "vanilla")
+#     noisy_output_dir = os.path.join(path, "camera_pose", "noisy")
+#     os.makedirs(original_output_dir, exist_ok=True)
+#     os.makedirs(noisy_output_dir, exist_ok=True)
+
+#     # 保存原始 cam_intrinsics 和 cam_extrinsics 到文件
+#     original_intrinsics_file = os.path.join(original_output_dir, "cam_intrinsics.txt")
+#     original_extrinsics_file = os.path.join(original_output_dir, "cam_extrinsics.txt")
+
+#     with open(original_intrinsics_file, 'w') as f:
+#         f.write(str(cam_intrinsics))
+
+#     with open(original_extrinsics_file, 'w') as f:
+#         f.write(str(cam_extrinsics))
+
+#     # 添加噪声到内参和外参
+#     noisy_cam_extrinsics, noisy_cam_intrinsics = add_noise_to_extrinsics_and_intrinsics(cam_extrinsics, cam_intrinsics)
+
+#     # 保存带噪声的 cam_intrinsics 和 cam_extrinsics 到文件
+#     noisy_intrinsics_file = os.path.join(noisy_output_dir, "cam_intrinsics.txt")
+#     noisy_extrinsics_file = os.path.join(noisy_output_dir, "cam_extrinsics.txt")
+
+#     with open(noisy_intrinsics_file, 'w') as f:
+#         f.write(str(noisy_cam_intrinsics))
+
+#     with open(noisy_extrinsics_file, 'w') as f:
+#         f.write(str(noisy_cam_extrinsics))
+
+
+#     reading_dir = "images" if images == None else images
+#     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+#     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
+
+#     if eval:
+#         train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+#         test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+#     else:
+#         train_cam_infos = cam_infos
+#         test_cam_infos = []
+
+#     nerf_normalization = getNerfppNorm(train_cam_infos)
+
+#     ply_path = os.path.join(path, "sparse/0/points3D.ply")
+#     bin_path = os.path.join(path, "sparse/0/points3D.bin")
+#     txt_path = os.path.join(path, "sparse/0/points3D.txt")
+#     if not os.path.exists(ply_path):
+#         print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
+#         try:
+#             xyz, rgb, _ = read_points3D_binary(bin_path)
+#         except:
+#             xyz, rgb, _ = read_points3D_text(txt_path)
+#         storePly(ply_path, xyz, rgb)
+#     try:
+#         pcd = fetchPly(ply_path)
+#     except:
+#         pcd = None
+
+#     scene_info = SceneInfo(point_cloud=pcd,
+#                            train_cameras=train_cam_infos,
+#                            test_cameras=test_cam_infos,
+#                            nerf_normalization=nerf_normalization,
+#                            ply_path=ply_path)
+#     return scene_info
+
+# add noise
 def readColmapSceneInfo(path, images, eval, llffhold=8):
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
@@ -141,9 +223,40 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
-    reading_dir = "images" if images == None else images
-    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
-    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
+    # 创建路径
+    original_output_dir = os.path.join(path, "camera_pose", "vanilla")
+    noisy_output_dir = os.path.join(path, "camera_pose", "noisy")
+    os.makedirs(original_output_dir, exist_ok=True)
+    os.makedirs(noisy_output_dir, exist_ok=True)
+
+    # 保存原始 cam_intrinsics 和 cam_extrinsics 到文件
+    original_intrinsics_file = os.path.join(original_output_dir, "cam_intrinsics.txt")
+    original_extrinsics_file = os.path.join(original_output_dir, "cam_extrinsics.txt")
+
+    with open(original_intrinsics_file, 'w') as f:
+        f.write(str(cam_intrinsics))
+
+    with open(original_extrinsics_file, 'w') as f:
+        f.write(str(cam_extrinsics))
+
+    # 添加噪声到内参和外参
+    noisy_cam_extrinsics, noisy_cam_intrinsics = add_noise_to_extrinsics_and_intrinsics(cam_extrinsics, cam_intrinsics)
+
+    # 保存带噪声的 cam_intrinsics 和 cam_extrinsics 到文件
+    noisy_intrinsics_file = os.path.join(noisy_output_dir, "cam_intrinsics.txt")
+    noisy_extrinsics_file = os.path.join(noisy_output_dir, "cam_extrinsics.txt")
+
+    with open(noisy_intrinsics_file, 'w') as f:
+        f.write(str(noisy_cam_intrinsics))
+
+    with open(noisy_extrinsics_file, 'w') as f:
+        f.write(str(noisy_cam_extrinsics))
+
+
+
+    reading_dir = "images" if images is None else images
+    cam_infos_unsorted = readColmapCameras(cam_extrinsics=noisy_cam_extrinsics, cam_intrinsics=noisy_cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+    cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 
     if eval:
         train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
@@ -175,6 +288,87 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path)
     return scene_info
+
+#bezier
+# def readColmapSceneInfo(path, images, eval, llffhold=8):
+#     try:
+#         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
+#         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
+#         cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
+#         cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+#     except:
+#         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
+#         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
+#         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
+#         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
+
+#     # 调用贝塞尔曲线函数生成新的相机位姿
+#     cam_extrinsics = generate_new_camera_poses(cam_extrinsics)
+
+
+#     original_output_dir = os.path.join(path, "camera_pose", "vanilla")
+#     bezier_output_dir = os.path.join(path, "camera_pose", "bezier")
+#     os.makedirs(original_output_dir, exist_ok=True)
+#     os.makedirs(bezier_output_dir, exist_ok=True)
+
+#     # 保存原始 cam_intrinsics 和 cam_extrinsics 到文件
+#     original_intrinsics_file = os.path.join(original_output_dir, "cam_intrinsics.txt")
+#     original_extrinsics_file = os.path.join(original_output_dir, "cam_extrinsics.txt")
+
+#     with open(original_intrinsics_file, 'w') as f:
+#         f.write(str(cam_intrinsics))
+
+#     with open(original_extrinsics_file, 'w') as f:
+#         f.write(str(cam_extrinsics))
+
+#     # 生成贝塞尔曲线变换后的相机外参
+#     bezier_cam_extrinsics = generate_new_camera_poses(cam_extrinsics)
+
+#     # 保存贝塞尔曲线生成的 cam_intrinsics 和 cam_extrinsics 到文件
+#     bezier_intrinsics_file = os.path.join(bezier_output_dir, "cam_intrinsics.txt")
+#     bezier_extrinsics_file = os.path.join(bezier_output_dir, "cam_extrinsics.txt")
+
+#     with open(bezier_intrinsics_file, 'w') as f:
+#         f.write(str(cam_intrinsics))
+
+#     with open(bezier_extrinsics_file, 'w') as f:
+#         f.write(str(bezier_cam_extrinsics))
+
+
+#     reading_dir = "images" if images is None else images
+#     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+#     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
+
+#     if eval:
+#         train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+#         test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+#     else:
+#         train_cam_infos = cam_infos
+#         test_cam_infos = []
+
+#     nerf_normalization = getNerfppNorm(train_cam_infos)
+
+#     ply_path = os.path.join(path, "sparse/0/points3D.ply")
+#     bin_path = os.path.join(path, "sparse/0/points3D.bin")
+#     txt_path = os.path.join(path, "sparse/0/points3D.txt")
+#     if not os.path.exists(ply_path):
+#         print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
+#         try:
+#             xyz, rgb, _ = read_points3D_binary(bin_path)
+#         except:
+#             xyz, rgb, _ = read_points3D_text(txt_path)
+#         storePly(ply_path, xyz, rgb)
+#     try:
+#         pcd = fetchPly(ply_path)
+#     except:
+#         pcd = None
+
+#     scene_info = SceneInfo(point_cloud=pcd,
+#                            train_cameras=train_cam_infos,
+#                            test_cameras=test_cam_infos,
+#                            nerf_normalization=nerf_normalization,
+#                            ply_path=ply_path)
+#     return scene_info
 
 def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png"):
     cam_infos = []
